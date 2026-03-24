@@ -2,6 +2,14 @@
 
 Aplicação simples que demonstra **enfileiramento de tarefas** em background usando [FastAPI](https://fastapi.tiangolo.com/), [Redis](https://redis.io/) e [RQ](https://python-rq.org/).
 
+### Dependências com uv
+
+Este projeto usa `uv` com dependências declaradas em `pyproject.toml` e travadas em `uv.lock`.
+
+```bash
+uv sync
+```
+
 ### Uso rápido com Docker
 
 1. **Copie o arquivo de variáveis de ambiente**  

@@ -1,11 +1,13 @@
 import os
+from typing import Any, Optional
 from dotenv import load_dotenv
 from redis import Redis
 from rq import Queue
 from rq.job import Job
+from rq.exceptions import NoSuchJobError
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from tasks import process_job
+from src.tasks import process_job
 
 load_dotenv()
 
@@ -24,9 +26,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def _job_result(job: Job):
+    if hasattr(job, "return_value"):
+        return job.return_value()
+    return job.result
+
+
+def resolve_job_id(job: Any | None) -> Optional[str]:
+    """Compatibiliza leitura de id do job entre versões do RQ."""
+    if job is None:
+        return None
+    job_id = getattr(job, "id", None)
+    if job_id:
+        return str(job_id)
+    get_id = getattr(job, "get_id", None)
+    if callable(get_id):
+        return get_id()
+    return None
+
 
 @app.get("/")
-async def index():
+def index():
     return {
         "status": "success",
         "message": f"{os.getenv('APP_NAME')} - v{os.getenv('APP_VERSION')}"
@@ -34,7 +54,7 @@ async def index():
 
 
 @app.post("/enqueue")
-async def enqueue(message: str = Form("Hello World!"), notify: bool = Form(...)):
+def enqueue(message: str = Form("Hello World!"), notify: bool = Form(...)):
     job = q.enqueue(
         process_job,
         message,
@@ -42,17 +62,18 @@ async def enqueue(message: str = Form("Hello World!"), notify: bool = Form(...))
         job_timeout=60
     )
 
-    return {
-        "task_id": job.get_id(),
-        "status": "queued"
-    }
+    task_id = resolve_job_id(job)
+    if not task_id:
+        raise HTTPException(status_code=500, detail="Could not resolve job id")
+
+    return {"task_id": task_id, "status": "queued"}
 
 
 @app.get("/status/{task_id}")
-async def job_status(task_id: str):
+def job_status(task_id: str):
     try:
         job = Job.fetch(task_id, connection=redis_conn)
-    except Exception:
+    except NoSuchJobError:
         raise HTTPException(status_code=400, detail="Job not found")
 
     if job.is_queued:
@@ -60,7 +81,7 @@ async def job_status(task_id: str):
     if job.is_started:
         return {"status": "processing"}
     if job.is_finished:
-        result = job.result
+        result = _job_result(job)
         return {"status": "done", "result": result}
     if job.is_failed:
         return {"status": "failed", "error": str(job.exc_info)}

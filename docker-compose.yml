@@ -1,43 +1,42 @@
-version: '3.9'
-
 services:
   redis:
     image: redis:7
-    container_name: ocr-redis
+    container_name: app-redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
 
-  ocr-api:
+  app-api:
+    container_name: app-api
+    image: app-api
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ocr-api
     ports:
       - "8000:8000"
     environment:
       TZ: "America/Rio_Branco"
-      REDIS_URL: redis://ocr-redis:6379/0
+      REDIS_URL: redis://app-redis:6379/0
       UPLOAD_DIR: /shared_uploads
     volumes:
-      - ocr_uploads:/shared_uploads
+      - app_uploads:/shared_uploads
     depends_on:
       - redis
     restart: unless-stopped
 
-  ocr-worker:
+  app-worker:
     build:
       context: .
       dockerfile: Dockerfile
     environment:
       TZ: "America/Rio_Branco"
-      REDIS_URL: redis://ocr-redis:6379/0
+      REDIS_URL: redis://app-redis:6379/0
       UPLOAD_DIR: /shared_uploads
     volumes:
-      - ocr_uploads:/shared_uploads
+      - app_uploads:/shared_uploads
     depends_on:
       - redis
-    command: python worker.py
+    command: uv run python -m src.worker
     restart: unless-stopped
     deploy:
       resources:
@@ -47,4 +46,4 @@ services:
 
 volumes:
   redis_data:
-  ocr_uploads:
+  app_uploads:
